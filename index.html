@@ -1,0 +1,580 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TruthScan — AI Fake News Detector</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet" />
+  <style>
+    /* ── Reset & Variables ── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg:           #0a0a0f;
+      --surface:      #111118;
+      --surface2:     #1a1a24;
+      --border:       #2a2a3a;
+      --text:         #e8e8f0;
+      --muted:        #6b6b85;
+      --accent:       #4f8ef7;
+      --real:         #22c55e;
+      --real-bg:      rgba(34,197,94,.08);
+      --real-border:  rgba(34,197,94,.3);
+      --fake:         #ef4444;
+      --fake-bg:      rgba(239,68,68,.08);
+      --fake-border:  rgba(239,68,68,.3);
+      --warn:         #f59e0b;
+      --warn-bg:      rgba(245,158,11,.08);
+      --warn-border:  rgba(245,158,11,.3);
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'IBM Plex Sans', sans-serif;
+      min-height: 100vh;
+      background-image:
+        radial-gradient(ellipse 80% 50% at 50% -10%, rgba(79,142,247,.12) 0%, transparent 60%),
+        repeating-linear-gradient(0deg,  transparent, transparent 40px, rgba(255,255,255,.01) 40px, rgba(255,255,255,.01) 41px),
+        repeating-linear-gradient(90deg, transparent, transparent 40px, rgba(255,255,255,.01) 40px, rgba(255,255,255,.01) 41px);
+    }
+
+    /* ── Header ── */
+    header {
+      position: sticky; top: 0; z-index: 100;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 18px 28px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(10,10,15,.88);
+      backdrop-filter: blur(12px);
+    }
+    .logo { display: flex; align-items: center; gap: 12px; }
+    .logo-icon {
+      width: 38px; height: 38px; border-radius: 9px;
+      background: linear-gradient(135deg, #4f8ef7, #7c3aed);
+      display: grid; place-items: center; font-size: 20px;
+    }
+    .logo-name  { font-family: 'Bebas Neue', sans-serif; font-size: 24px; letter-spacing: 3px; }
+    .logo-tagline { font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: var(--muted); letter-spacing: 1px; }
+    .badge {
+      font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 1px;
+      padding: 5px 12px; border-radius: 20px;
+      border: 1px solid var(--border); background: var(--surface); color: var(--muted);
+    }
+
+    /* ── Main layout ── */
+    main { max-width: 820px; margin: 0 auto; padding: 44px 24px 80px; }
+
+    /* Hero */
+    .hero { text-align: center; margin-bottom: 44px; }
+    .hero h1 {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: clamp(44px, 9vw, 76px);
+      letter-spacing: 5px; line-height: 1;
+      background: linear-gradient(135deg, #e8e8f0 0%, #4f8ef7 100%);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+      margin-bottom: 12px;
+    }
+    .hero p { font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: var(--muted); letter-spacing: 1px; }
+
+    /* Cards */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 28px;
+      margin-bottom: 20px;
+    }
+    .card-label {
+      font-family: 'IBM Plex Mono', monospace; font-size: 10px;
+      letter-spacing: 2px; color: var(--muted); text-transform: uppercase;
+      margin-bottom: 16px; display: flex; align-items: center; gap: 10px;
+    }
+    .card-label::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+
+    /* Tabs & language */
+    .controls { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; align-items: center; }
+    .tab {
+      font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: 1px;
+      padding: 8px 16px; border-radius: 8px;
+      border: 1px solid var(--border); background: transparent;
+      color: var(--muted); cursor: pointer; transition: all .2s;
+    }
+    .tab.active { background: var(--surface2); border-color: var(--accent); color: var(--accent); }
+    .tab:hover:not(.active) { border-color: var(--muted); color: var(--text); }
+    .lang-select {
+      font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+      padding: 8px 14px; border-radius: 8px;
+      border: 1px solid var(--border); background: var(--surface2); color: var(--muted);
+      cursor: pointer; margin-left: auto;
+    }
+
+    /* Inputs */
+    input[type="text"], textarea {
+      width: 100%; padding: 14px 16px;
+      background: var(--surface2); border: 1px solid var(--border); border-radius: 10px;
+      color: var(--text); font-family: 'IBM Plex Sans', sans-serif; font-size: 14px;
+      outline: none; transition: border-color .2s; resize: vertical;
+    }
+    input[type="text"]  { margin-bottom: 10px; }
+    textarea            { min-height: 180px; line-height: 1.7; }
+    input:focus, textarea:focus { border-color: var(--accent); }
+    ::placeholder       { color: var(--muted); }
+    .char-count { text-align: right; font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--muted); margin-top: 6px; }
+
+    /* Image drop zone */
+    .image-drop {
+      width: 100%; min-height: 160px;
+      border: 2px dashed var(--border); border-radius: 10px;
+      display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
+      color: var(--muted); font-family: 'IBM Plex Mono', monospace; font-size: 12px;
+      cursor: pointer; transition: all .2s; background: var(--surface2); overflow: hidden;
+    }
+    .image-drop:hover { border-color: var(--accent); color: var(--accent); }
+    .image-drop.filled { border-style: solid; border-color: var(--accent); }
+    .image-drop img { max-height: 140px; border-radius: 6px; object-fit: contain; }
+    #file-input { display: none; }
+
+    /* Analyze button */
+    #analyze-btn {
+      width: 100%; padding: 17px;
+      border: none; border-radius: 12px; cursor: pointer;
+      background: linear-gradient(135deg, #4f8ef7, #7c3aed);
+      color: #fff; font-family: 'Bebas Neue', sans-serif;
+      font-size: 21px; letter-spacing: 3px;
+      transition: all .2s; position: relative; overflow: hidden;
+    }
+    #analyze-btn:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 10px 34px rgba(79,142,247,.4); }
+    #analyze-btn:disabled { opacity: .55; cursor: not-allowed; transform: none; }
+
+    /* Spinner */
+    .spinner {
+      display: inline-block; width: 18px; height: 18px;
+      border: 2px solid rgba(255,255,255,.3); border-top-color: #fff;
+      border-radius: 50%; animation: spin .8s linear infinite;
+      vertical-align: middle; margin-right: 8px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Loading steps */
+    #loading {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 16px; padding: 44px 28px;
+      text-align: center; margin-bottom: 20px;
+      animation: pulse 1.5s ease-in-out infinite;
+    }
+    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .55; } }
+    #loading h3 { font-family: 'IBM Plex Mono', monospace; color: var(--accent); font-size: 14px; letter-spacing: 2px; margin-bottom: 20px; }
+    .step-list { display: flex; flex-direction: column; gap: 10px; text-align: left; max-width: 320px; margin: 0 auto; }
+    .step {
+      display: flex; align-items: center; gap: 10px;
+      font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: var(--muted);
+    }
+    .step.done   { color: var(--real); }
+    .step.active { color: var(--accent); }
+    .step-dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
+
+    /* Error */
+    #error-box {
+      background: var(--fake-bg); border: 1px solid var(--fake-border);
+      border-radius: 12px; padding: 18px 20px;
+      font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: var(--fake);
+      margin-bottom: 20px;
+    }
+
+    /* Result card */
+    .result-card {
+      border-radius: 16px; padding: 28px; margin-bottom: 20px;
+      animation: slideUp .4s cubic-bezier(.16,1,.3,1);
+    }
+    @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+    .result-card.real      { background: var(--real-bg);  border: 1px solid var(--real-border); }
+    .result-card.fake      { background: var(--fake-bg);  border: 1px solid var(--fake-border); }
+    .result-card.uncertain { background: var(--warn-bg);  border: 1px solid var(--warn-border); }
+
+    .verdict-row   { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 14px; margin-bottom: 20px; }
+    .verdict-left  { display: flex; align-items: center; gap: 14px; }
+    .verdict-emoji { font-size: 40px; }
+    .verdict-text  { font-family: 'Bebas Neue', sans-serif; font-size: 48px; letter-spacing: 4px; line-height: 1; }
+    .verdict-text.real      { color: var(--real); }
+    .verdict-text.fake      { color: var(--fake); }
+    .verdict-text.uncertain { color: var(--warn); }
+    .conf-block { text-align: right; }
+    .conf-num   { font-family: 'Bebas Neue', sans-serif; font-size: 52px; letter-spacing: 2px; line-height: 1; }
+    .conf-num.real      { color: var(--real); }
+    .conf-num.fake      { color: var(--fake); }
+    .conf-num.uncertain { color: var(--warn); }
+    .conf-label { font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: var(--muted); letter-spacing: 2px; text-transform: uppercase; }
+
+    /* Bar */
+    .bar-wrap { background: rgba(255,255,255,.06); border-radius: 6px; height: 8px; overflow: hidden; margin-bottom: 24px; }
+    .bar-fill  { height: 100%; border-radius: 6px; transition: width 1s cubic-bezier(.16,1,.3,1); }
+    .bar-fill.real      { background: linear-gradient(90deg,#16a34a,#22c55e); }
+    .bar-fill.fake      { background: linear-gradient(90deg,#b91c1c,#ef4444); }
+    .bar-fill.uncertain { background: linear-gradient(90deg,#b45309,#f59e0b); }
+
+    /* Section headers */
+    .sec-title {
+      font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 2px;
+      color: var(--muted); text-transform: uppercase;
+      padding-bottom: 8px; border-bottom: 1px solid var(--border); margin-bottom: 12px;
+    }
+    .summary-text { font-size: 15px; line-height: 1.75; color: var(--text); margin-bottom: 22px; }
+
+    /* Tags */
+    .tags { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 22px; }
+    .tag  { font-family: 'IBM Plex Mono', monospace; font-size: 11px; padding: 5px 12px; border-radius: 20px; border: 1px solid; }
+    .tag.red    { color: var(--fake); border-color: var(--fake-border); background: var(--fake-bg); }
+    .tag.green  { color: var(--real); border-color: var(--real-border); background: var(--real-bg); }
+    .tag.yellow { color: var(--warn); border-color: var(--warn-border); background: var(--warn-bg); }
+    .tag.blue   { color: var(--accent); border-color: rgba(79,142,247,.3); background: rgba(79,142,247,.08); }
+
+    /* Signals grid */
+    .signals-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 22px; }
+    .signal {
+      background: rgba(255,255,255,.03); border: 1px solid var(--border);
+      border-radius: 10px; padding: 14px;
+    }
+    .signal-icon { font-size: 20px; margin-bottom: 6px; }
+    .sig-name { font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 1px; color: var(--muted); text-transform: uppercase; margin-bottom: 5px; }
+    .sig-dot   { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
+    .sig-dot.red    { background: var(--fake); }
+    .sig-dot.green  { background: var(--real); }
+    .sig-dot.yellow { background: var(--warn); }
+    .sig-val { font-size: 13px; color: var(--text); line-height: 1.5; }
+
+    /* Headline check */
+    .hl-box { background: rgba(255,255,255,.03); border: 1px solid var(--border); border-radius: 10px; padding: 16px; margin-bottom: 22px; }
+    .hl-row { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 8px; }
+    .hl-row:last-child { margin-bottom: 0; }
+    .hl-lbl { font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 1px; color: var(--muted); text-transform: uppercase; min-width: 100px; padding-top: 2px; }
+    .hl-val { font-size: 13px; color: var(--text); line-height: 1.5; }
+
+    /* Recommendation */
+    .rec-box { border-radius: 10px; padding: 14px 16px; font-size: 14px; line-height: 1.65; font-style: italic; }
+    .rec-box.real      { background: var(--real-bg);  color: var(--real);  border: 1px solid var(--real-border); }
+    .rec-box.fake      { background: var(--fake-bg);  color: var(--fake);  border: 1px solid var(--fake-border); }
+    .rec-box.uncertain { background: var(--warn-bg);  color: var(--warn);  border: 1px solid var(--warn-border); }
+
+    /* Info tips */
+    .tips { display: grid; grid-template-columns: repeat(3,1fr); gap: 12px; margin-top: 36px; }
+    .tip  { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 18px; }
+    .tip-icon  { font-size: 24px; margin-bottom: 8px; }
+    .tip-title { font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: 1px; color: var(--accent); margin-bottom: 6px; text-transform: uppercase; }
+    .tip-text  { font-size: 12px; color: var(--muted); line-height: 1.6; }
+
+    /* Responsive */
+    .hidden { display: none !important; }
+    @media (max-width: 600px) {
+      main { padding: 28px 16px 60px; }
+      .card { padding: 20px; }
+      .signals-grid { grid-template-columns: 1fr; }
+      .tips { grid-template-columns: 1fr; }
+      .verdict-row { justify-content: center; text-align: center; }
+      .conf-block  { width: 100%; text-align: center; }
+      header { padding: 14px 16px; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── Header ── -->
+<header>
+  <div class="logo">
+    <div class="logo-icon">🔍</div>
+    <div>
+      <div class="logo-name">TRUTHSCAN</div>
+      <div class="logo-tagline">AI FACT CHECKER</div>
+    </div>
+  </div>
+  <span class="badge">Made in India</span>
+</header>
+
+<!-- ── Main ── -->
+<main>
+
+  <!-- Hero -->
+  <div class="hero">
+    <h1>DETECT FAKE NEWS</h1>
+    <p>// paste article · upload image · get instant ai analysis</p>
+  </div>
+
+  <!-- Input card -->
+  <div class="card">
+    <div class="card-label">01 — Input Article</div>
+
+    <div class="controls">
+      <button class="tab active" id="tab-text" onclick="setMode('text')">📝 TEXT</button>
+      <button class="tab"        id="tab-img"  onclick="setMode('image')">🖼 IMAGE</button>
+      <select class="lang-select" id="lang-select">
+        <option value="en">🇺🇸 English</option>
+        <option value="hi">🇮🇳 Hindi</option>
+      </select>
+    </div>
+
+    <input type="text" id="headline" placeholder="Headline / Title (optional — for clickbait detection)" />
+
+    <!-- Text input -->
+    <div id="text-panel">
+      <textarea id="content" placeholder="Paste the full news article or any text you want to fact-check…" oninput="updateChar()"></textarea>
+      <div class="char-count"><span id="char-count">0</span> characters</div>
+    </div>
+
+    <!-- Image input -->
+    <div id="img-panel" class="hidden">
+      <div class="image-drop" id="drop-zone" onclick="document.getElementById('file-input').click()">
+        <div id="drop-placeholder">
+          <div style="font-size:34px;margin-bottom:8px">📸</div>
+          <div>Click or drop an image of the article</div>
+          <div style="font-size:11px;opacity:.5;margin-top:4px">JPG · PNG · WEBP supported</div>
+        </div>
+        <img id="img-preview" class="hidden" alt="preview" />
+      </div>
+      <input type="file" id="file-input" accept="image/*" onchange="handleImage(event)" />
+    </div>
+  </div>
+
+  <!-- Analyze button -->
+  <button id="analyze-btn" onclick="analyze()"> ANALYZE NOW</button>
+
+  <!-- Error -->
+  <div id="error-box" class="hidden"></div>
+
+  <!-- Loading -->
+  <div id="loading" class="hidden">
+    <div style="font-size:34px;margin-bottom:10px">🔬</div>
+    <h3>RUNNING ANALYSIS</h3>
+    <div class="step-list" id="step-list"></div>
+  </div>
+
+  <!-- Result -->
+  <div id="result-area"></div>
+
+  <!-- Tips (shown when no result) -->
+  <div class="tips" id="tips-section">
+    <div class="tip">
+      <div class="tip-icon">🧬</div>
+      <div class="tip-title">Language Analysis</div>
+      <div class="tip-text">Detects emotional, sensational, or manipulative language patterns in the article.</div>
+    </div>
+    <div class="tip">
+      <div class="tip-icon">🔗</div>
+      <div class="tip-title">Source Signals</div>
+      <div class="tip-text">Checks for missing citations, vague sourcing, and anonymous or unverifiable claims.</div>
+    </div>
+    <div class="tip">
+      <div class="tip-icon">📊</div>
+      <div class="tip-title">Confidence Score</div>
+      <div class="tip-text">Every analysis comes with a confidence score and detailed signal breakdown.</div>
+    </div>
+  </div>
+
+</main>
+
+<script>
+  /* ── State ── */
+  let mode = 'text';
+  let imageBase64 = '';
+  let imageType   = 'image/jpeg';
+
+  const STEPS = [
+    'Extracting article structure…',
+    'Analyzing language patterns…',
+    'Cross-checking source signals…',
+    'Evaluating headline vs content…',
+    'Generating explanation…',
+  ];
+
+  /* ── Helpers ── */
+  function setMode(m) {
+    mode = m;
+    document.getElementById('tab-text').classList.toggle('active', m === 'text');
+    document.getElementById('tab-img').classList.toggle('active',  m === 'image');
+    document.getElementById('text-panel').classList.toggle('hidden', m !== 'text');
+    document.getElementById('img-panel').classList.toggle('hidden',  m !== 'image');
+  }
+
+  function updateChar() {
+    document.getElementById('char-count').textContent =
+      document.getElementById('content').value.length;
+  }
+
+  function handleImage(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    imageType = file.type || 'image/jpeg';
+    const reader = new FileReader();
+    reader.onload = () => {
+      imageBase64 = reader.result.split(',')[1];
+      const preview = document.getElementById('img-preview');
+      preview.src = reader.result;
+      preview.classList.remove('hidden');
+      document.getElementById('drop-placeholder').classList.add('hidden');
+      document.getElementById('drop-zone').classList.add('filled');
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function show(id)  { document.getElementById(id).classList.remove('hidden'); }
+  function hide(id)  { document.getElementById(id).classList.add('hidden'); }
+  function vc(v)     { return v === 'REAL' ? 'real' : v === 'FAKE' ? 'fake' : 'uncertain'; }
+  function vi(v)     { return v === 'REAL' ? '✅' : v === 'FAKE' ? '🚫' : '⚠️'; }
+
+  /* ── Loading animation ── */
+  let stepTimer;
+  function startSteps() {
+    const list = document.getElementById('step-list');
+    list.innerHTML = STEPS.map((s,i) =>
+      `<div class="step" id="step-${i}"><div class="step-dot"></div>${s}</div>`
+    ).join('');
+    let cur = 0;
+    document.getElementById('step-0').classList.add('active');
+    stepTimer = setInterval(() => {
+      document.getElementById(`step-${cur}`)?.classList.replace('active','done');
+      cur++;
+      if (cur < STEPS.length) document.getElementById(`step-${cur}`).classList.add('active');
+      else clearInterval(stepTimer);
+    }, 650);
+  }
+
+  /* ── Main analyze ── */
+  async function analyze() {
+  const content  = document.getElementById('content').value.trim();
+  const headline = document.getElementById('headline').value.trim();
+  const language = document.getElementById('lang-select').value;
+
+  if (!content && !imageBase64) {
+    document.getElementById('error-box').textContent = '⛔ Please paste article or upload image';
+    show('error-box');
+    return;
+  }
+
+  hide('error-box');
+  hide('result-area');
+  hide('tips-section');
+  show('loading');
+  startSteps();
+
+  const btn = document.getElementById('analyze-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>ANALYZING…';
+
+  try {
+    const res = await fetch('/analyze', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        content,
+        headline,
+        language,
+        image_base64: imageBase64,
+        image_type: imageType
+      })
+    });
+
+    // FIX: handle non-JSON safely
+    const text = await res.text();
+
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch (e) {
+      console.error("Not JSON:", text);
+      throw new Error("Server returned invalid response");
+    }
+
+    if (!data.success) {
+      throw new Error(data.error || "Server error");
+    }
+
+    renderResult(data.result);
+
+  } catch (err) {
+    console.error(err);
+    document.getElementById('error-box').textContent = '⛔ ' + err.message;
+    show('error-box');
+  } finally {
+    clearInterval(stepTimer);
+    hide('loading');
+    btn.disabled = false;
+    btn.innerHTML = '⚡ ANALYZE NOW';
+  }
+}
+
+    
+
+
+  /* ── Render result ── */
+  function renderResult(r) {
+    const cls = vc(r.verdict);
+
+    // Signals HTML
+    const sigs = (r.signals || []).map(s => `
+      <div class="signal">
+        <div class="signal-icon">${s.icon}</div>
+        <div class="sig-name"><span class="sig-dot ${s.severity}"></span>${s.name}</div>
+        <div class="sig-val">${s.value}</div>
+      </div>`).join('');
+
+    // Tags HTML
+    const tags = (r.tags || []).map(t =>
+      `<span class="tag ${t.color}">${t.label}</span>`).join('');
+
+    // Headline check HTML
+    const hc = r.headlineCheck;
+    const hlHtml = hc ? `
+      <div class="sec-title">📰 Headline Analysis</div>
+      <div class="hl-box">
+        <div class="hl-row">
+          <span class="hl-lbl">Clickbait</span>
+          <span class="hl-val">${hc.isClickbait ? `🚨 Yes — ${hc.clickbaitReason}` : '✅ No clickbait detected'}</span>
+        </div>
+        <div class="hl-row">
+          <span class="hl-lbl">Matches Body</span>
+          <span class="hl-val">${hc.headlineMatchesContent ? '✅ Headline aligns with article content' : `⚠️ Mismatch — ${hc.mismatchDetail}`}</span>
+        </div>
+      </div>` : '';
+
+    const html = `
+      <div class="result-card ${cls}">
+        <div class="verdict-row">
+          <div class="verdict-left">
+            <div class="verdict-emoji">${vi(r.verdict)}</div>
+            <div class="verdict-text ${cls}">${r.verdict || 'UNCERTAIN'}</div>
+          </div>
+          <div class="conf-block">
+            <div class="conf-num ${cls}">${r.confidence}%</div>
+            <div class="conf-label">Confidence</div>
+          </div>
+        </div>
+
+        <div class="bar-wrap"><div class="bar-fill ${cls}" id="bar-fill"></div></div>
+
+        <div class="sec-title">🧠 AI Assessment</div>
+        <div class="summary-text">${r.summary}</div>
+
+        <div class="tags">${tags}</div>
+
+        <div class="sec-title">🔍 Detection Signals</div>
+        <div class="signals-grid">${sigs}</div>
+
+        ${hlHtml}
+
+        <div class="sec-title">💡 Recommendation</div>
+        <div class="rec-box ${cls}">"${r.recommendation}"</div>
+      </div>`;
+
+    const area = document.getElementById('result-area');
+    area.innerHTML = html;
+    show('result-area');
+
+    // Animate bar after paint
+    requestAnimationFrame(() => {
+      setTimeout(() => {
+        document.getElementById('bar-fill').style.width = r.confidence + '%';
+      }, 50);
+    });
+  }
+</script>
+</body>
+</html>
